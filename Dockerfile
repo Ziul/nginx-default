@@ -26,7 +26,8 @@ RUN go get . && \
 
 # Use distroless as minimal base image to package the binary
 # Refer to https://github.com/GoogleContainerTools/distroless for more details
-FROM gcr.io/distroless/static:nonroot
+# FROM gcr.io/distroless/static:nonroot
+FROM scratch
 
 COPY --from=builder /go/src/k8s.io/ingress-nginx/images/custom-error-pages/nginx-errors /
 COPY --from=builder /go/src/k8s.io/ingress-nginx/images/custom-error-pages/www /www

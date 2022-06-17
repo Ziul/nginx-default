@@ -31,6 +31,6 @@ FROM scratch
 
 COPY --from=builder /go/src/k8s.io/ingress-nginx/images/custom-error-pages/nginx-errors /
 COPY --from=builder /go/src/k8s.io/ingress-nginx/images/custom-error-pages/www /www
-USER nonroot:nonroot
+# USER nonroot:nonroot
 
 CMD ["/nginx-errors"]

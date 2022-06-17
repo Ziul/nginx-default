@@ -20,7 +20,7 @@ WORKDIR /go/src/k8s.io/ingress-nginx/images/custom-error-pages
 COPY . .
 
 RUN go get . && \
-    GOARCH=arm64 CGO_ENABLED=0 go build -a -installsuffix cgo \
+    CGO_ENABLED=0 go build -a -installsuffix cgo \
 	-ldflags "-s -w" \
 	-o nginx-errors .
 

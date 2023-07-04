@@ -68,6 +68,12 @@ const (
 	// client does not specify an Accept header, or the Accept header provided
 	// cannot be mapped to a file extension.
 	DefaultFormatVar = "DEFAULT_RESPONSE_FORMAT"
+
+	// StatusCodeEnvFormat is the format of the environment variable that may
+	// store the status code response
+	// ex.: STATUS_CODE_404 or STATUS_CODE_4XX will be used for 404 errors
+	// by default
+	StatusCodeEnvFormat = "STATUS_CODE_"
 )
 
 func init() {
@@ -93,8 +99,12 @@ func main() {
 	http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-
-	http.ListenAndServe(fmt.Sprintf(":8080"), nil)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Printf("Starting server at port %v", port)
+	http.ListenAndServe(fmt.Sprintf(":%v", port), nil)
 }
 
 func errorHandler(path, defaultFormat string) func(http.ResponseWriter, *http.Request) {
@@ -145,40 +155,49 @@ func errorHandler(path, defaultFormat string) func(http.ResponseWriter, *http.Re
 		}
 		w.WriteHeader(code)
 
-		if !strings.HasPrefix(ext, ".") {
-			ext = "." + ext
+		content := os.Getenv(fmt.Sprintf("%v%v", StatusCodeEnvFormat, code))
+		if content == "" {
+			log.Printf("Looking for %v%vXX", StatusCodeEnvFormat, code/100)
+			content = os.Getenv(fmt.Sprintf("%v%vXX", StatusCodeEnvFormat, code/100))
 		}
-		// special case for compatibility
-		if ext == ".htm" {
-			ext = ".html"
-		}
-		file := fmt.Sprintf("%v/%v%v", path, code, ext)
-		f, err := os.Open(file)
-		if err != nil {
-			log.Printf("unexpected error opening file: %v", err)
-			scode := strconv.Itoa(code)
-			file := fmt.Sprintf("%v/%cxx%v", path, scode[0], ext)
+
+		if content != "" {
+			w.Write([]byte(content))
+		} else {
+			if !strings.HasPrefix(ext, ".") {
+				ext = "." + ext
+			}
+			// special case for compatibility
+			if ext == ".htm" {
+				ext = ".html"
+			}
+			file := fmt.Sprintf("%v/%v%v", path, code, ext)
 			f, err := os.Open(file)
 			if err != nil {
 				log.Printf("unexpected error opening file: %v", err)
-				http.NotFound(w, r)
+				scode := strconv.Itoa(code)
+				file := fmt.Sprintf("%v/%cxx%v", path, scode[0], ext)
+				f, err := os.Open(file)
+				if err != nil {
+					log.Printf("unexpected error opening file: %v", err)
+					http.NotFound(w, r)
+					return
+				}
+				defer f.Close()
+				log.Printf("serving custom error response for code %v and format %v from file %v", code, format, file)
+				io.Copy(w, f)
 				return
 			}
 			defer f.Close()
-			log.Printf("serving custom error response for code %v and format %v from file %v", code, format, file)
 			io.Copy(w, f)
-			return
 		}
-		defer f.Close()
-		log.Printf("serving custom error response for code %v and format %v from file %v", code, format, file)
-		io.Copy(w, f)
 
-		duration := time.Now().Sub(start).Seconds()
+		duration := time.Since(start).Seconds()
 
 		proto := strconv.Itoa(r.ProtoMajor)
 		proto = fmt.Sprintf("%s.%s", proto, strconv.Itoa(r.ProtoMinor))
 
-		requestCount.WithLabelValues(proto).Inc()
-		requestDuration.WithLabelValues(proto).Observe(duration)
+		requestCount.WithLabelValues(proto, fmt.Sprint(code), r.Header.Get(ServiceName)).Inc()
+		requestDuration.WithLabelValues(proto, fmt.Sprint(code), r.Header.Get(ServiceName)).Observe(duration)
 	}
 }
